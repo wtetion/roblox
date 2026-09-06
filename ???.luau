@@ -163,14 +163,57 @@ local function v26(p1)
 
     return v328
 end
-t1.LogoFile = "Kira" .. "/logo.png"
-t1.LogoFileLight = "Kira" .. "/logo-light.png"
+t1.LogoFile = nil
+t1.LogoFileLight = nil
 local n1 = 620
 local n2 = 430
 local n3 = 152
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+
+-- Remove the old standalone Infinite Yield logo file if it exists.
+pcall(function()
+    if type(isfile) == "function" and isfile("logo.png") and type(delfile) == "function" then
+        delfile("logo.png")
+    end
+end)
+
+-- Anti-AFK (Infinite Yield-style): refresh the player's idle connection and
+-- send a harmless input pulse whenever Roblox reports the client as idle.
+local antiAfkCon = nil
+local function enableAntiAFK()
+    local player = Players.LocalPlayer
+    if not player then
+        return
+    end
+
+    pcall(function()
+        if getconnections then
+            for _, c in getconnections(player.Idled) do
+                pcall(function() c:Disable() end)
+                pcall(function() c:Disconnect() end)
+            end
+        end
+    end)
+
+    pcall(function()
+        if antiAfkCon then
+            antiAfkCon:Disconnect()
+        end
+    end)
+
+    antiAfkCon = player.Idled:Connect(function()
+        pcall(function()
+            local VirtualInputManager = Instance.new("VirtualInputManager")
+            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+            VirtualInputManager:Destroy()
+        end)
+    end)
+end
+
+enableAntiAFK()
 
 -- Hide the game's red "!" marker without touching other UI.
 local function hideRedBangMarker(obj)
@@ -227,6 +270,11 @@ do
             local TweenService = game:GetService("TweenService")
 
             HttpService = game:GetService("HttpService")
+
+            -- Remove the old root-level Infinite Yield logo file when supported.
+            if type(delfile) == "function" then
+                pcall(delfile, "logo")
+            end
             Stats = game:GetService("Stats")
             ProximityPromptService = game:GetService("ProximityPromptService")
             ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -349,7 +397,7 @@ do
                 return v352
             end
 
-            t1.ConfigFile = (("Kira" .. "/" .. v26(t1.Game)) .. "/cache") .. "/" .. v26(LocalPlayer and LocalPlayer.Name or "Player") .. "-config.json"
+            t1.ConfigFile = (("axel" .. "/" .. v26(t1.Game)) .. "/cache") .. "/" .. v26(LocalPlayer and LocalPlayer.Name or "Player") .. "-config.json"
             t2 = {
 				Dark = {
 					bg = Color3.fromRGB(12, 11, 10),
@@ -439,7 +487,14 @@ do
 				Webhook = "out",
 				Settings = "cog"
 			}
-            t9 = {}
+            t9 = {
+                StealTravel = "Speed",
+                StealSpeed = 300,
+                BossRiftSpeed = 750,
+                BossRift = false,
+                HumReady = false,
+                AutoHumanoid = true,
+            }
             t10 = {}
             t11 = {}
             t12 = {}
@@ -512,31 +567,8 @@ do
                     return
                 end
 
-                local v368 = p4 and t1.LogoFileLight or t1.LogoFile
-
-                if type(makefolder) == "function" then
-                    pcall(makefolder, "Kira")
-                end
-
-                if writefile then
-                    pcall(writefile, v368, v367)
-                end
-
-                if getcustomasset then
-                    local ok, result = pcall(getcustomasset, v368)
-
-                    if ok and type(result) == "string" and result ~= "" then
-                        if p4 then
-                            u76 = result
-
-                            return result
-                        end
-
-                        u75 = result
-
-                        return result
-                    end
-                end
+                -- Do not persist the embedded logo to workspace.
+                return
             end
 
             function v79()
@@ -2563,439 +2595,292 @@ do
         warn("[Axel/cfg]", ...)
     end
 
+    ----------------------------------------------------------------
+    -- CONFIG SYSTEM
+    -- Saves JSON to disk. Export JS produces:
+    --     const axelConfig = {...};
+    -- Import accepts JSON or the exported JS text.
+    ----------------------------------------------------------------
     function v270()
         for k, v in pairs(t10) do
             if v and v.kind == "input" and v.box then
                 pcall(function()
-                    local boxText = v.box.Text
-
-                    if type(boxText) ~= "string" then
-                        return
-                    end
-
-                    if boxText ~= "" or t9[k] == nil or t9[k] == "" then
-                        t9[k] = boxText
+                    local value = v.box.Text
+                    if type(value) == "string" and (value ~= "" or t9[k] == nil or t9[k] == "") then
+                        t9[k] = value
                     end
                 end)
             end
         end
 
-        local t82 = {}
-
+        local result = {}
         for k, v in pairs(t9) do
-            if not t81[k] and (k ~= "HookUrl" or t9.ExportUrl) then
-                local v597 = type(v)
-
-                if v597 == "boolean" or v597 == "number" or v597 == "string" then
-                    t82[k] = v
-                elseif v597 == "table" then
-                    t82[k] = v
+            if not t81[k]
+                and k ~= "ImportPaste"
+                and k ~= "CfgSaveName"
+                and k ~= "CfgPreset"
+                and k ~= "HookUrl"
+                and k ~= "InstantTPEggs"
+            then
+                local kind = type(v)
+                if kind == "boolean" or kind == "number" or kind == "string" or kind == "table" then
+                    result[k] = v
                 else
-                    local ok, result = pcall(function()
-                        return v.Name
-                    end)
-
-                    if ok and type(result) == "string" then
-                        t82[k] = result
+                    local ok, name = pcall(function() return v.Name end)
+                    if ok and type(name) == "string" then
+                        result[k] = name
                     end
                 end
             end
         end
-
-        return t82
+        return result
     end
 
-    local function v271(p58, p59)
-        if type(p58) ~= "string" or p58 == "" then
+    local function v271(path, data)
+        if type(path) ~= "string" or path == "" or type(data) ~= "string" then
+            return false
+        end
+        if type(writefile) ~= "function" then
+            v269("writefile missing")
             return false
         end
 
         if type(makefolder) == "function" then
-            pcall(makefolder, "Kira")
+            pcall(makefolder, "axel")
+            pcall(makefolder, "Kira/" .. v26(t1.Game))
+            pcall(makefolder, "Kira/" .. v26(t1.Game) .. "/cache")
+            pcall(makefolder, "Kira/" .. v26(t1.Game) .. "/configs")
         end
 
-        local v602 = "Kira" .. "/" .. v26(t1.Game)
+        local parent = path:match("^(.*)/[^/]+$")
+        if parent and type(makefolder) == "function" then pcall(makefolder, parent) end
 
-        if type(makefolder) == "function" then
-            pcall(makefolder, v602)
-        end
-
-        local v603 = ("Kira" .. "/" .. v26(t1.Game)) .. "/cache"
-
-        if type(makefolder) == "function" then
-            pcall(makefolder, v603)
-        end
-
-        local v604 = ("Kira" .. "/" .. v26(t1.Game)) .. "/configs"
-
-        if type(makefolder) == "function" then
-            pcall(makefolder, v604)
-        end
-
-        local v605 = p58:match("^(.*)/[^/]+$")
-
-        if v605 and type(makefolder) == "function" then
-            pcall(makefolder, v605)
-        end
-
-        local ok, result = pcall(writefile, p58, p59)
-
+        local ok, err = pcall(writefile, path, data)
         if not ok then
-            v269("write fail", p58, (tostring(result)))
-
+            v269("write fail", path, tostring(err))
             return false
         end
-
         return true
     end
 
-    function v272(p60)
-        if u265 and not p60 then
-            return
-        end
+    function v272(force)
+        if u265 and not force then return end
+        if type(writefile) ~= "function" then return end
 
-        if not writefile then
-            v269("writefile missing")
-
-            return
-        end
-
-        local ok, result = pcall(function()
-            return HttpService:JSONEncode((v270()))
+        local ok, json = pcall(function()
+            return HttpService:JSONEncode(v270())
         end)
-
-        if not ok or type(result) ~= "string" then
-            v269("encode fail", (tostring(result)))
-
+        if not ok or type(json) ~= "string" then
+            v269("encode fail", tostring(json))
             return
         end
 
-        if not v271((("Kira" .. "/" .. v26(t1.Game)) .. "/cache") .. "/" .. v26(LocalPlayer and LocalPlayer.Name or "Player") .. "-config.json", result) then
-            v271((("Kira" .. "/" .. v26(t1.Game)) .. "/cache") .. "/" .. str .. "-config.json", result)
-        end
+        local playerName = v26(LocalPlayer and LocalPlayer.Name or "Player")
+        v271("Kira/" .. v26(t1.Game) .. "/cache/" .. playerName .. "-config.json", json)
     end
 
-    local function v273(p61, p62)
-        local v614 = t10[p61]
-
-        if v614 and (v614.kind == "keybind" and type(p62) == "string") then
-            local ok, result = pcall(function()
-                return Enum.KeyCode[p62]
-            end)
-
-            if ok and result then
-                return result
-            end
+    local function v273(key, value)
+        local widget = t10[key]
+        if widget and widget.kind == "keybind" and type(value) == "string" then
+            local ok, result = pcall(function() return Enum.KeyCode[value] end)
+            if ok and result then return result end
         end
-
-        if p61 == "Theme" and (p62 == "Dusk" or p62 == "dusk") then
-            return "Dark"
+        if key == "Theme" then
+            return value == "Light" and "Light" or "Dark"
         end
-
-        return p62
+        return value
     end
 
-    function v274(p63, p64)
-        if type(p63) ~= "table" then
-            return
-        end
+    function v274(data, fire)
+        if type(data) ~= "table" then return false end
 
         u265 = true
+        local ok, err = pcall(function()
+            data.NeverTraps = nil
+            data.RarityZones = nil
+            data.HopMinPlayers = nil
+            data.HopMaxPlayers = nil
+            data.AntiDie = nil
+            data.InstantTPEggs = nil
+            data.CfgPreset = nil
+            data.CfgSaveName = nil
+            data.ImportPaste = nil
 
-        local ok, result = pcall(function()
-            if p63.NeverTraps == true then
-                p63.AntiTrap = true
+            if data.StealMode == "Rarity snipe" then
+                data.StealMode = "Egg type filter"
             end
 
-            p63.NeverTraps = nil
-            p63.RarityZones = nil
-            p63.HopMinPlayers = nil
-            p63.HopMaxPlayers = nil
-            p63.AntiDie = nil
-
-            if p63.StealMode == "Rarity snipe" then
-                p63.StealMode = "Egg type filter"
-            end
-
-            for k, v in pairs(p63) do
-                if k ~= "ImportPaste" then
-                    local v1281 = v273(k, v)
-                    local v1282 = t10[k]
-
-                    if v1282 and v1282.set then
-                        pcall(v1282.set, v1281)
-
-                        if p64 and v1282.on and v1282.kind ~= "slider" and k ~= "Flight" and k ~= "CfgPreset" then
-                            pcall(v1282.on, t9[k])
-                        end
-                    else
-                        t9[k] = v1281
+            for key, value in pairs(data) do
+                local normalized = v273(key, value)
+                local widget = t10[key]
+                if widget and widget.set then
+                    pcall(widget.set, normalized)
+                    if fire and widget.on and widget.kind ~= "slider" and key ~= "Flight" then
+                        pcall(widget.on, t9[key])
                     end
+                else
+                    t9[key] = normalized
                 end
             end
         end)
-
         u265 = false
 
         if not ok then
-            v269("apply fail", (tostring(result)))
+            v269("apply fail", tostring(err))
+            return false
         end
+        return true
     end
 
-    local function v275(p65)
-        if type(p65) ~= "string" or p65 == "" or not readfile then
-            return
-        end
+    local function decodeConfigText(raw)
+        if type(raw) ~= "string" or raw == "" then return nil end
 
-        local ok, result = pcall(readfile, p65)
+        local ok, data = pcall(function()
+            return HttpService:JSONDecode(raw)
+        end)
+        if ok and type(data) == "table" then return data end
 
-        if ok and type(result) == "string" and result ~= "" then
-            local ok2, result2 = pcall(function()
-                return HttpService:JSONDecode(result)
-            end)
+        local json = raw:match("=%s*(%b{})%s*;?%s*$")
+            or raw:match("return%s*(%b{})%s*;?%s*$")
+            or raw:match("(%b{})")
+        if not json then return nil end
 
-            if ok2 and type(result2) == "table" then
-                return result2, p65
-            end
-        end
+        local ok2, data2 = pcall(function()
+            return HttpService:JSONDecode(json)
+        end)
+        if ok2 and type(data2) == "table" then return data2 end
+        return nil
     end
+
+    local function v275(path)
+        if type(path) ~= "string" or path == "" or type(readfile) ~= "function" then
+            return nil, nil
+        end
+        local ok, raw = pcall(readfile, path)
+        if not ok or type(raw) ~= "string" or raw == "" then return nil, nil end
+
+        local data = decodeConfigText(raw)
+        if data then return data, path end
+        return nil, nil
+    end
+
     local function v276()
-        local t83 = { "default" }
-        local t84 = {
-			default = true
-		}
+        local names = {"default"}
+        local seen = {default = true}
+        local folder = "Kira/" .. v26(t1.Game) .. "/configs"
 
         if type(listfiles) == "function" then
-            local ok, result = pcall(listfiles, ("Kira" .. "/" .. v26(t1.Game)) .. "/configs")
-
-            if ok and type(result) == "table" then
-                for i = 1, #result do
-                    local v631 = tostring(result[i] or ""):gsub("\\", "/"):match("([^/]+)%.json$")
-
-                    if v631 and not t84[v631] then
-                        t84[v631] = true
-                        t83[#t83 + 1] = v631
+            local ok, files = pcall(listfiles, folder)
+            if ok and type(files) == "table" then
+                for _, file in ipairs(files) do
+                    local normalized = tostring(file or ""):gsub("\\", "/")
+                    local name = normalized:match("([^/]+)%.json$")
+                        or normalized:match("([^/]+)%.js$")
+                    if name and not seen[name] then
+                        seen[name] = true
+                        names[#names + 1] = name
                     end
                 end
             end
-        elseif type(isfile) == "function" then
-            local v632 = tostring(t9.CfgPreset or ""):gsub("^%s+", ""):gsub("%s+$", "")
-            local v633 = (function() if v632 ~= "" then return v26(v632) else return "default" end end)()
-
-            if v633 ~= "default" and not t84[v633] then
-                t83[#t83 + 1] = v633
-            end
         end
 
-        table.sort(t83, function(p66, p67)
-            if p66 == "default" then
-                return true
-            end
-
-            if p67 == "default" then
-                return false
-            end
-
-            return p66 < p67
+        table.sort(names, function(a,b)
+            if a == "default" then return true end
+            if b == "default" then return false end
+            return a < b
         end)
-
-        return t83
+        return names
     end
 
     function v277()
-        local CfgPreset = t10.CfgPreset
+        local preset = t10.CfgPreset
+        if not preset or not preset.options then return end
 
-        if not CfgPreset or not CfgPreset.options then
-            return
+        local names = v276()
+        for i = #preset.options, 1, -1 do preset.options[i] = nil end
+        for i, name in ipairs(names) do preset.options[i] = name end
+
+        local wanted = tostring(t9.CfgPreset or "default"):gsub("^%s+",""):gsub("%s+$","")
+        local valid = false
+        for _, name in ipairs(names) do
+            if name == wanted then valid = true break end
         end
+        if not valid then wanted = "default"; t9.CfgPreset = wanted end
 
-        local v635 = v276()
-
-        for i = #CfgPreset.options, 1, -1 do
-            CfgPreset.options[i] = nil
-        end
-
-        for i = 1, #v635 do
-            CfgPreset.options[i] = v635[i]
-        end
-
-        local v638 = tostring(t9.CfgPreset or ""):gsub("^%s+", ""):gsub("%s+$", "")
-        local v639 = (function() if v638 ~= "" then return v26(v638) else return "default" end end)()
-        local v640 = false
-
-        for i = 1, #v635 do
-            if v639 == v635[i] then
-                v640 = true
-
-                break
-            end
-        end
-
-        if not v640 then
-            v639 = "default"
-            t9.CfgPreset = v639
-        end
-
-        if CfgPreset.set then
-            pcall(CfgPreset.set, v639)
-
-            return
-        end
-
-        if CfgPreset.refresh then
-            pcall(CfgPreset.refresh)
-        end
+        if preset.set then pcall(preset.set, wanted)
+        elseif preset.refresh then pcall(preset.refresh) end
     end
-    function v278(p68)
-        local v643 = tostring(p68 or ""):gsub("^%s+", ""):gsub("%s+$", "")
-        local v644 = (function() if v643 ~= "" then return v26(v643) else return "default" end end)()
-        local ok, result = pcall(function()
-            return HttpService:JSONEncode((v270()))
+
+    function v278(name)
+        local clean = tostring(name or ""):gsub("^%s+",""):gsub("%s+$","")
+        clean = clean ~= "" and v26(clean) or "default"
+
+        local ok, json = pcall(function()
+            return HttpService:JSONEncode(v270())
         end)
+        if not ok or type(json) ~= "string" then return false end
 
-        if not ok or type(result) ~= "string" then
-            v269("named encode fail", (tostring(result)))
+        local path = "Kira/" .. v26(t1.Game) .. "/configs/" .. clean .. ".json"
+        if not v271(path, json) then return false end
 
-            return false
-        end
-
-        local v647 = v271
-        local v648 = ("Kira" .. "/" .. v26(t1.Game)) .. "/configs"
-        local v649 = tostring(v644 or ""):gsub("^%s+", ""):gsub("%s+$", "")
-
-        if not v647(v648 .. "/" .. (((function() if v649 ~= "" then return v26(v649) else return "default" end end)())) .. ".json", result) then
-            return false
-        end
-
-        t9.CfgPreset = v644
+        t9.CfgPreset = clean
         v277()
-        v269("saved named", v644)
-
         return true
     end
-    function v279(p69, p70)
-        local v652 = tostring(p69 or ""):gsub("^%s+", ""):gsub("%s+$", "")
-        local v653 = (function() if v652 ~= "" then return v26(v652) else return "default" end end)()
-        local v654 = v275
-        local v655 = ("Kira" .. "/" .. v26(t1.Game)) .. "/configs"
-        local v656 = tostring(v653 or ""):gsub("^%s+", ""):gsub("%s+$", "")
-        local v657, v658 = v654(v655 .. "/" .. (((function() if v656 ~= "" then return v26(v656) else return "default" end end)())) .. ".json")
 
-        if not v657 then
-            v269("no named config", v653)
+    function v279(name, fire)
+        local clean = tostring(name or "default"):gsub("^%s+",""):gsub("%s+$","")
+        clean = clean ~= "" and v26(clean) or "default"
+        local folder = "Kira/" .. v26(t1.Game) .. "/configs"
 
+        local data = v275(folder .. "/" .. clean .. ".json")
+        if not data then data = v275(folder .. "/" .. clean .. ".js") end
+        if not data then
+            v269("no config", clean)
             return false
         end
 
-        v274(v657, p70)
+        if not v274(data, fire) then return false end
+
         t9.Flight = false
-
-        if t10.Flight and t10.Flight.set then
-            pcall(t10.Flight.set, false)
-        end
-
-        t9.CfgPreset = v653
+        if t10.Flight and t10.Flight.set then pcall(t10.Flight.set, false) end
+        t9.CfgPreset = clean
         u71(t9.Theme or "Dark")
 
-        local num = tonumber(t9.UIScale)
-
-        if num then
-            v108.Scale = num / 100
-        end
-
+        local scale = tonumber(t9.UIScale)
+        if scale then v108.Scale = math.clamp(scale, 75, 125) / 100 end
         v272(true)
-        v269("loaded named", v658)
-
         return true
     end
-    function v280(p71)
-        if not readfile then
-            v269("readfile missing")
 
-            return false
-        end
+    function v280()
+        if type(readfile) ~= "function" then return false end
+        local folder = "Kira/" .. v26(t1.Game) .. "/configs"
+        local playerName = v26(LocalPlayer and LocalPlayer.Name or "Player")
 
-        local v661, v662 = v275((("Kira" .. "/" .. v26(t1.Game)) .. "/cache") .. "/" .. v26(LocalPlayer and LocalPlayer.Name or "Player") .. "-config.json")
+        local data = v275("Kira/" .. v26(t1.Game) .. "/cache/" .. playerName .. "-config.json")
+        if not data then data = v275(folder .. "/default.json") end
+        if not data then return false end
 
-        if not v661 then
-            v661, v662 = v275((("Kira" .. "/" .. v26(t1.Game)) .. "/cache") .. "/" .. str .. "-config.json")
-        end
-
-        if not v661 then
-            local v663 = v275
-            local v664 = ("Kira" .. "/" .. v26(t1.Game)) .. "/configs"
-            local v665 = tostring("default" or ""):gsub("^%s+", ""):gsub("%s+$", "")
-
-            v661, v662 = v663(v664 .. "/" .. (((function() if v665 ~= "" then return v26(v665) else return "default" end end)())) .. ".json")
-        end
-
-        if not v661 then
-            local t85 = {
-				("Kira" .. "/" .. v26(t1.Game)) .. "/config.json",
-				"Kira" .. "/config.json",
-				"Kira" .. "/" .. t1.Game .. "/config.json",
-				("Kira" .. "/" .. v26(t1.Game)) .. "/Kira.json",
-				"Kira" .. "/Kira.json",
-				"Kira.json"
-			}
-
-            for i = 1, #t85 do
-                v661, v662 = v275(t85[i])
-
-                if v661 then
-                    break
-                end
-            end
-        end
-
-        if not v661 then
-            v277()
-
-            return false
-        end
-
-        v274(v661, p71)
-        t9.Flight = false
-
-        if t10.Flight and t10.Flight.set then
-            pcall(t10.Flight.set, false)
-        end
-
-        u71(t9.Theme or "Dark")
-
-        local num = tonumber(t9.UIScale)
-
-        if num then
-            v108.Scale = num / 100
-        end
-
-        if t9.StartMin then
-            u70(false)
-        end
-
-        for k, v in pairs(t10) do
-            if v and v.set and t9[k] ~= nil then
-                if v.kind == "toggle" then
-                    pcall(v.set, t9[k] == true)
-                elseif v.kind == "choice" or v.kind == "dropdown" or v.kind == "input" or v.kind == "slider" then
-                    pcall(v.set, t9[k])
-                end
-            end
-        end
-
-        if u66 then
-            u69(u66, v250.Text)
-        end
-
-        v277()
-
-        if v662 ~= (("Kira" .. "/" .. v26(t1.Game)) .. "/cache") .. "/" .. v26(LocalPlayer and LocalPlayer.Name or "Player") .. "-config.json" then
-            v272(true)
-        end
-
-        v269("loaded", v662)
-
+        v274(data, false)
         return true
+    end
+
+    local function exportConfigJS()
+        local ok, json = pcall(function()
+            return HttpService:JSONEncode(v270())
+        end)
+        if not ok or type(json) ~= "string" then return nil end
+        return "const axelConfig = " .. json .. ";"
+    end
+
+    local function saveExportJS(name)
+        local js = exportConfigJS()
+        if not js then return false end
+
+        local clean = tostring(name or t9.CfgSaveName or ""):gsub("^%s+",""):gsub("%s+$","")
+        clean = clean ~= "" and v26(clean) or "default"
+        return v271("Kira/" .. v26(t1.Game) .. "/configs/" .. clean .. ".js", js)
     end
     function v281(p72, p73, p74, p75, p76, p77)
         t9[p73] = not not p76
@@ -5115,7 +5000,7 @@ v281(v295, "AutoSteal", "Auto steal", "idle · took 0 · lost 0 · re-grabbed 0"
 		"Flight"
 	}
 })
-v282(v295, "StealSpeed", "Travel speed", "Studs/s — can pullback if this is too high", 50, 1300, 300, " studs/s")
+v282(v295, "StealSpeed", "Travel speed", "Studs/s — can pullback if this is too high", 0, 500, 300, " studs/s")
 v263(v295, "Targeting")
 v287(v295, "StealMode", "What to take", "Filters being used from below", {
 	"Best value",
@@ -5153,7 +5038,20 @@ v281(v296, "UpgTreadmill", "Auto upgrade treadmill", "buys the next treadmill wh
 v281(v296, "UpgPen", "Auto upgrade pen", "more room for pets", false)
 v288(v296, "KeepMoney", "Keep this much money", "never spend below this — blank to spend freely", "spend it all · e.g. 500m", "")
 v263(v296, "Selling")
-v289(v296, "SellPreview", "Preview what will sell", "opens a window under the stats panel — Hover icon to display stats", "Preview", nil, false)
+-- Selling rarity is an independent multi-select filter.
+-- It reuses the same rarity names as the steal UI, but the selected values
+-- are stored separately in SellRarity and never touch Rarities.
+local sellRarityOptions = {}
+for _, v in ipairs(t6 or {}) do
+	sellRarityOptions[#sellRarityOptions + 1] = v
+end
+-- Old configs stored one rarity as a string (or "Any"). Migrate that
+-- value to the new independent checkbox-style list on load.
+if type(t9.SellRarity) == "string" then
+	local oldSellRarity = t9.SellRarity
+	t9.SellRarity = oldSellRarity ~= "" and oldSellRarity ~= "Any" and { oldSellRarity } or {}
+end
+v287(v296, "SellRarity", "Rarity for sell", "Must be checked to sell; works together with the $/s floor", sellRarityOptions, t9.SellRarity or {}, true)
 v288(v296, "SellUnderGen", "Sell anything earning under ($/s)", "blank = nothing sells", "nothing sells · e.g. 250k", "")
 v281(v296, "AutoSellPets", "Auto sell pets", "equips then sells at the stall · worst first · only below the floor", false)
 v281(v296, "AutoSellEggs", "Auto sell eggs", "equips then sells at the stall · spare eggs only — plot eggs stay", false)
@@ -5310,7 +5208,6 @@ v287(v299, "HookPing", "Ping", "", {
 }, "No ping", false)
 v288(v299, "HookUserId", "User id", "optional", "0", "")
 v281(v299, "HookUsername", "Show my Roblox name and headshot", "", false)
-v281(v299, "ExportUrl", "Let exported configs carry the URL", "off by default", false)
 v263(v300, "Appearance")
 v281(v300, "PhoneUI", "Phone layout", "compact hub for phones / emulators — leave off on PC", u42)
 v282(v300, "UIScale", "UI scale", "zooms the hub — does not crush the layout", 75, 125, 100, "%")
@@ -5318,6 +5215,16 @@ v287(v300, "Theme", "Theme", "dark or light — mark swaps with the theme", {
 	"Dark",
 	"Light"
 }, "Dark", false)
+v287(v300, "KiraAccent", "Accent Color", "Cascade accent color used throughout the hub.", {
+	"Orange",
+	"Blue",
+	"Red",
+	"Yellow",
+	"Green",
+	"Graphite",
+	"Pink",
+	"Purple"
+}, "Orange", false)
 v263(v300, "Keybinds")
 v290(v300, "OpenBind", "Open / close", "press this any time to show or hide", t1.OpenBind)
 v290(v300, "FlightBind2", "Toggle flight", "same bind as the movement page", t1.FlightBind)
@@ -5329,41 +5236,32 @@ v289(v300, "SaveCfgAs", "Save config", "writes Kira/.../configs/<name>.json", "S
     v278(t9.CfgSaveName)
 end, true)
 v289(v300, "ExportCfg", "Export settings", "copies config to clipboard", "Copy", function()
-    v272()
-
-    local ok, result = pcall(function()
-        return HttpService:JSONEncode((v270()))
-    end)
-
-    if not ok then
+    local js = exportConfigJS()
+    if not js then
+        v269("export: encode failed")
         return
     end
-
-    if setclipboard then
-        pcall(setclipboard, result)
+    if type(setclipboard) == "function" then
+        pcall(setclipboard, js)
     end
+    saveExportJS(t9.CfgSaveName)
 end, true)
 v288(v300, "ImportPaste", "Import settings", "load config from clipboard", "paste, then press Import", "")
 v289(v300, "ImportCfg", "Import", nil, "Import", function()
     local ImportPaste = t9.ImportPaste
+    local result = decodeConfigText(tostring(ImportPaste or ""))
 
-    if type(ImportPaste) ~= "string" or ImportPaste == "" then
+    if type(result) ~= "table" then
+        v269("import: invalid JSON/JS config")
         return
     end
 
-    local ok, result = pcall(function()
-        return HttpService:JSONDecode(ImportPaste)
-    end)
-
-    if not ok or type(result) ~= "table" then
-        return
+    if v274(result, true) then
+        u71(t9.Theme or "Dark")
+        pcall(applyCascadeAppearance)
+        v272(true)
+        v277()
     end
-
-    v274(result, true)
-    u71(t9.Theme or "Dark")
-    t9.KiraAccent = tostring(t9.KiraAccent or "Orange")
-    pcall(applyCascadeAppearance)
-    v272(true)
 end, false)
 v263(v300, "Window")
 local u305
@@ -6099,6 +5997,84 @@ end;
 
         return Humanoid, HumanoidRootPart, Character
     end
+
+    ----------------------------------------------------------------
+    -- SRC2 HUMANOID CORE
+    -- Mirrors the supplied src2 Humanoid replacement system.
+    ----------------------------------------------------------------
+    local SRC2_HUM_COPY = {
+        "RigType",
+        "HipHeight",
+        "JumpPower",
+        "JumpHeight",
+        "UseJumpPower",
+        "AutoRotate",
+        "MaxSlopeAngle",
+        "DisplayDistanceType",
+        "NameDisplayDistance",
+        "HealthDisplayDistance",
+        "AutomaticScalingEnabled",
+        "BreakJointsOnDeath",
+        "RequiresNeck",
+        "EvaluateStateMachine",
+    }
+
+    local function createSrc2Humanoid()
+        local Character = LocalPlayer.Character
+        local oldHumanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+
+        if not Character or not oldHumanoid or oldHumanoid.Health <= 0 then
+            return false
+        end
+
+        local data = {}
+        for _, propertyName in ipairs(SRC2_HUM_COPY) do
+            local ok, result = pcall(function()
+                return oldHumanoid[propertyName]
+            end)
+            if ok then
+                data[propertyName] = result
+            end
+        end
+
+        local walkSpeed = oldHumanoid.WalkSpeed
+
+        pcall(function()
+            oldHumanoid:Destroy()
+        end)
+
+        RunService.Heartbeat:Wait()
+
+        local Humanoid = Instance.new("Humanoid")
+        for propertyName, value in pairs(data) do
+            pcall(function()
+                Humanoid[propertyName] = value
+            end)
+        end
+
+        Humanoid.Parent = Character
+        RunService.Heartbeat:Wait()
+
+        if Humanoid.Parent ~= Character then
+            t9.HumReady = false
+            return false
+        end
+
+        pcall(function()
+            Humanoid.WalkSpeed = walkSpeed
+            Humanoid:ChangeState(Enum.HumanoidStateType.Landed)
+        end)
+
+        local CurrentCamera = workspace.CurrentCamera
+        if CurrentCamera then
+            pcall(function()
+                CurrentCamera.CameraSubject = Humanoid
+            end)
+        end
+
+        t9.HumReady = true
+        return true
+    end
     local function v1113()
         local CurrentCamera = workspace.CurrentCamera
 
@@ -6773,7 +6749,7 @@ end;
         end
 
         if u1128 and typeof(u1127) == "Vector3" then
-            return math.clamp(tonumber(t9.StealSpeed) or 300, 50, 1300)
+            return math.clamp(tonumber(t9.StealSpeed) or 300, 0, 500)
         end
 
         if t9.BypassSpeed == true then
@@ -7903,6 +7879,12 @@ end;
                 return
             end
 
+            t9.HumReady = false
+            if t9.AutoHumanoid and t9.AutoSteal == true then
+                pcall(createSrc2Humanoid)
+                Humanoid = character:FindFirstChildOfClass("Humanoid") or Humanoid
+            end
+
             v1144()
             v1160()
             v1175()
@@ -8014,7 +7996,15 @@ end;
                     end
                 end
 
-                p216.CFrame = CFrame.new(Vector3.new(p216Position.X, p216PositionY, p216Position.Z), Vector3.new(p216Position.X, p216PositionY, p216Position.Z) + v2762)
+                local movePos = Vector3.new(p216Position.X, p216PositionY, p216Position.Z)
+                local existingLook = p216.CFrame.LookVector
+                local flatExisting = Vector3.new(existingLook.X, 0, existingLook.Z)
+                if flatExisting.Magnitude < 0.05 then
+                    flatExisting = Vector3.new(0, 0, -1)
+                else
+                    flatExisting = flatExisting.Unit
+                end
+                p216.CFrame = CFrame.lookAt(movePos, movePos + flatExisting)
             end)
         elseif p216 then
             if t216 then
@@ -8040,11 +8030,144 @@ end;
             p216.AssemblyLinearVelocity = p217
         end
     end
+    ----------------------------------------------------------------
+    -- SRC2-STYLE SMOOTH SPEED TRAVEL
+    -- Uses Heartbeat-sized movement + direct CFrame updates, matching
+    -- the supplied src2 ground-travel core instead of TweenService.
+    ----------------------------------------------------------------
+    local function runSrc2SmoothSpeed(targetVector, token)
+        local Character = LocalPlayer.Character
+        local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+        local Root = Character and Character:FindFirstChild("HumanoidRootPart")
+
+        if not Root or not Humanoid or Humanoid.Health <= 0 then
+            return false
+        end
+
+        local startPosition = Root.Position
+        local lastPosition = startPosition
+        local deadTime = 0
+        local speed = math.clamp(tonumber(t9.StealSpeed) or 300, 0, 500)
+
+        while u1117
+            and t9.AutoSteal == true
+            and t9.StealTravel == "Speed"
+            and token == (t216 and t216.travelToken or token)
+            and typeof(u1127) == "Vector3"
+        do
+            local dt = RunService.Heartbeat:Wait()
+            Character = LocalPlayer.Character
+            Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+            Root = Character and Character:FindFirstChild("HumanoidRootPart")
+
+            if not Root or not Humanoid or Humanoid.Health <= 0 then
+                return false
+            end
+
+            local destination = u1127
+            local current = Root.Position
+            local flat = Vector3.new(destination.X - current.X, 0, destination.Z - current.Z)
+            local remaining = flat.Magnitude
+
+            if remaining <= 0.5 then
+                return true
+            end
+
+            if (current - lastPosition).Magnitude > 2 then
+                lastPosition = current
+                deadTime = os.clock()
+            elseif os.clock() - deadTime > 0.5 then
+                deadTime = os.clock()
+                pcall(u1131)
+            end
+
+            local step = math.min(remaining, speed * math.min(dt, 0.1))
+            local unit = flat.Magnitude > 0.001 and flat.Unit or Vector3.zero
+            local nextPosition = current + unit * step
+
+            local hip = tonumber(Humanoid.HipHeight) or 2
+            local halfRoot = Root.Size.Y * 0.5
+            local groundY = v1147(Vector3.new(nextPosition.X, current.Y, nextPosition.Z))
+            local targetY = (type(groundY) == "number" and groundY or current.Y - halfRoot - hip) + halfRoot + hip
+
+            local look = unit
+            if look.Magnitude < 0.05 then
+                look = Vector3.new(0, 0, -1)
+            end
+
+            local moveCFrame = CFrame.lookAt(
+                Vector3.new(nextPosition.X, targetY, nextPosition.Z),
+                Vector3.new(nextPosition.X, targetY, nextPosition.Z) + look
+            )
+
+            pcall(function()
+                Humanoid.PlatformStand = false
+                Humanoid.AutoRotate = false
+                Humanoid:Move(Vector3.zero, false)
+                Root.AssemblyLinearVelocity = Vector3.zero
+                Root.AssemblyAngularVelocity = Vector3.zero
+                Root.CFrame = moveCFrame
+                Humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+            end)
+        end
+
+        return false
+    end
+
     local function v1182(p218)
         if not u1117 then
             return
         end
+
         n7 = p218 or n7
+
+        -- Auto Steal stays on the single Speed method in the UI.
+        -- Outbound leg (GoEgg): move directly by CFrame to the current egg target.
+        -- Once the state changes to Grab/Return, this branch stops immediately and
+        -- the existing normal Speed movement engine takes over again.
+        if t216
+            and t216.state == "GoEgg"
+            and t9.AutoSteal == true
+            and t9.StealTravel == "Speed"
+            and typeof(u1127) == "Vector3"
+        then
+            local Character = LocalPlayer.Character
+            local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+            local Root = Character and Character:FindFirstChild("HumanoidRootPart")
+
+            if Root and Humanoid and Humanoid.Health > 0 then
+                local targetPosition = u1127
+                local current = Root.Position
+                local flat = Vector3.new(targetPosition.X - current.X, 0, targetPosition.Z - current.Z)
+
+                if flat.Magnitude <= 4.5 then
+                    pcall(function()
+                        Root.CFrame = CFrame.lookAt(
+                            Vector3.new(targetPosition.X, targetPosition.Y, targetPosition.Z),
+                            Vector3.new(targetPosition.X, targetPosition.Y, targetPosition.Z) +
+                                (flat.Magnitude > 0.05 and flat.Unit or Root.CFrame.LookVector)
+                        )
+                        Root.AssemblyLinearVelocity = Vector3.zero
+                        Root.AssemblyAngularVelocity = Vector3.zero
+                    end)
+                else
+                    pcall(function()
+                        local direction = flat.Unit
+                        local stopDistance = 3
+                        local destination = targetPosition - direction * stopDistance
+                        Root.CFrame = CFrame.lookAt(
+                            Vector3.new(destination.X, destination.Y, destination.Z),
+                            Vector3.new(destination.X, destination.Y, destination.Z) + direction
+                        )
+                        Root.AssemblyLinearVelocity = Vector3.zero
+                        Root.AssemblyAngularVelocity = Vector3.zero
+                    end)
+                end
+            end
+
+            return
+        end
+
         local v1682 = u1130()
         local Character2 = LocalPlayer.Character
         local v1684, v1685
@@ -9854,7 +9977,7 @@ end;
             end
 
             if p271 and p271.bytes then
-                local v2996 = "Kira" .. tostring(math.floor(os.clock() * 1000000)) .. tostring(math.random(100000, 999999))
+                local v2996 = "axel" .. tostring(math.floor(os.clock() * 1000000)) .. tostring(math.random(100000, 999999))
                 local v2997 = "--" .. v2996 .. "\r\n" .. "Content-Disposition: form-data; name=\"payload_json\"" .. "\r\n" .. "\r\n" .. result29 .. "\r\n" .. "--" .. v2996 .. "\r\n" .. "Content-Disposition: form-data; name=\"files[0]\"; filename=\"" .. (p271.name or "icon.png") .. "\"" .. "\r\n" .. "Content-Type: " .. (p271.mime or "image/png") .. "\r\n" .. "Content-Transfer-Encoding: binary" .. "\r\n" .. "\r\n" .. p271.bytes .. "\r\n" .. "--" .. v2996 .. "--\r\n"
 
                 if not string.find(p269, "wait=", 1, true) then
@@ -9928,11 +10051,14 @@ end;
 
             return true, result31
         end
-        local function v1811(p272)
-            if t9.HookEnabled ~= true then
+        local function v1811(p272, pWebhookUrl, pBypassConfig)
+            -- Original webhook path by default.
+            -- When pBypassConfig is true, the exact same sender/styling is reused
+            -- with a separate URL and without touching the original webhook config.
+            if pBypassConfig ~= true and t9.HookEnabled ~= true then
                 return false, "off"
             end
-            local HookUrl = t9.HookUrl
+            local HookUrl = pBypassConfig == true and pWebhookUrl or t9.HookUrl
             if type(HookUrl) ~= "string" or not string.find(HookUrl, "^https://") then
                 return false, "no url"
             end
@@ -10164,6 +10290,7 @@ end;
                 g3028 = true
             until not g3028
         end
+
         local function v1812(p276)
             if type(p276) ~= "table" then
                 return nil, nil, nil
@@ -12158,6 +12285,9 @@ end;
 		eventUid = nil,
 		eventFromField = false,
 		lastFeed = 0,
+		instantRouteBusy = false,
+		instantRouteUid = nil,
+		instantRouteAt = 0,
 		lastChestTake = 0,
 		feedLockUntil = 0,
 		feedWasWait = false,
@@ -16516,7 +16646,7 @@ end;
             if type(readfile) ~= "function" then
                 return
             end
-            local ok54, result54 = pcall(readfile, (("Kira" .. "/" .. v26(t1.Game)) .. "/cache") .. "/hop-used.json")
+            local ok54, result54 = pcall(readfile, (("axel" .. "/" .. v26(t1.Game)) .. "/cache") .. "/hop-used.json")
             if not ok54 or type(result54) ~= "string" or result54 == "" then
                 return
             end
@@ -16583,22 +16713,22 @@ end;
             end
 
             if type(makefolder) == "function" then
-                pcall(makefolder, "Kira")
+                pcall(makefolder, "axel")
             end
 
-            local v3875 = "Kira" .. "/" .. v26(t1.Game)
+            local v3875 = "axel" .. "/" .. v26(t1.Game)
 
             if type(makefolder) == "function" then
                 pcall(makefolder, v3875)
             end
 
-            local v3876 = ("Kira" .. "/" .. v26(t1.Game)) .. "/cache"
+            local v3876 = ("axel" .. "/" .. v26(t1.Game)) .. "/cache"
 
             if type(makefolder) == "function" then
                 pcall(makefolder, v3876)
             end
 
-            local v3877 = ("Kira" .. "/" .. v26(t1.Game)) .. "/configs"
+            local v3877 = ("axel" .. "/" .. v26(t1.Game)) .. "/configs"
 
             if type(makefolder) == "function" then
                 pcall(makefolder, v3877)
@@ -16626,7 +16756,7 @@ end;
             end)
 
             if ok55 and type(result55) == "string" then
-                pcall(writefile, (("Kira" .. "/" .. v26(t1.Game)) .. "/cache") .. "/hop-used.json", result55)
+                pcall(writefile, (("axel" .. "/" .. v26(t1.Game)) .. "/cache") .. "/hop-used.json", result55)
             end
         end
         v2199()
@@ -16763,7 +16893,7 @@ end;
                 KiraHopCache = nil
 
                 if type(readfile) == "function" then
-                    local ok58, result58 = pcall(readfile, (("Kira" .. "/" .. v26(t1.Game)) .. "/cache") .. "/hop-list.json")
+                    local ok58, result58 = pcall(readfile, (("axel" .. "/" .. v26(t1.Game)) .. "/cache") .. "/hop-list.json")
 
                     if ok58 and type(result58) == "string" and result58 ~= "" then
                         local data
@@ -16809,22 +16939,22 @@ end;
 
             if type(writefile) == "function" then
                 if type(makefolder) == "function" then
-                    pcall(makefolder, "Kira")
+                    pcall(makefolder, "axel")
                 end
 
-                local v3916 = "Kira" .. "/" .. v26(t1.Game)
+                local v3916 = "axel" .. "/" .. v26(t1.Game)
 
                 if type(makefolder) == "function" then
                     pcall(makefolder, v3916)
                 end
 
-                local v3917 = ("Kira" .. "/" .. v26(t1.Game)) .. "/cache"
+                local v3917 = ("axel" .. "/" .. v26(t1.Game)) .. "/cache"
 
                 if type(makefolder) == "function" then
                     pcall(makefolder, v3917)
                 end
 
-                local v3918 = ("Kira" .. "/" .. v26(t1.Game)) .. "/configs"
+                local v3918 = ("axel" .. "/" .. v26(t1.Game)) .. "/configs"
 
                 if type(makefolder) == "function" then
                     pcall(makefolder, v3918)
@@ -16835,7 +16965,7 @@ end;
                 end)
 
                 if ok59 and type(result59) == "string" then
-                    pcall(writefile, (("Kira" .. "/" .. v26(t1.Game)) .. "/cache") .. "/hop-list.json", result59)
+                    pcall(writefile, (("axel" .. "/" .. v26(t1.Game)) .. "/cache") .. "/hop-list.json", result59)
                 end
             end
         end
@@ -18461,11 +18591,117 @@ end;
 
             return t294
         end
-        local function v2242()
+        local function v2242a()
+            -- SellRarity is intentionally independent from the steal rarity filter.
+            -- It only becomes active when the inventory has actually reached its
+            -- capacity. Prefer explicit save fields, then fall back to player/UI
+            -- attributes/text when the game exposes capacity that way.
+            local save = v2221()
+            if type(save) ~= "table" then
+                return false
+            end
+
+            local directFullKeys = {
+                "InventoryFull",
+                "IsInventoryFull",
+                "PetInventoryFull",
+                "EggInventoryFull",
+            }
+            for _, key in ipairs(directFullKeys) do
+                if save[key] == true then
+                    return true
+                end
+            end
+
+            local inventory = save.Inventory
+            local inventoryCount = type(inventory) == "table" and #inventory or nil
+            if not inventoryCount and type(inventory) == "table" then
+                inventoryCount = 0
+                for _ in pairs(inventory) do
+                    inventoryCount = inventoryCount + 1
+                end
+            end
+
+            local capacityKeys = {
+                "InventoryCapacity", "InventoryLimit", "MaxInventory", "InventorySize",
+                "MaxInventorySize", "PetInventoryCapacity", "PetInventoryLimit",
+                "MaxPetInventory", "MaxPetSlots", "PetInventorySize",
+            }
+
+            local function readNumber(key)
+                local value = save[key]
+                if value == nil and type(inventory) == "table" then
+                    value = inventory[key]
+                end
+                return tonumber(value)
+            end
+
+            for _, key in ipairs(capacityKeys) do
+                local capacity = readNumber(key)
+                if capacity and capacity > 0 and inventoryCount and inventoryCount >= capacity then
+                    return true
+                end
+            end
+
+            -- Some versions expose the count/capacity under differently named
+            -- fields. Keep the scan shallow so this stays cheap during the sell loop.
+            for key, value in pairs(save) do
+                local keyName = string.lower(tostring(key))
+                local number = tonumber(value)
+                if number and keyName:find("inventory", 1, true) then
+                    if keyName:find("full", 1, true) and number ~= 0 then
+                        return true
+                    end
+                end
+            end
+
+            local playerAttributes = {
+                "InventoryFull", "IsInventoryFull", "PetInventoryFull",
+            }
+            for _, key in ipairs(playerAttributes) do
+                local ok, value = pcall(function()
+                    return LocalPlayer:GetAttribute(key)
+                end)
+                if ok and value == true then
+                    return true
+                end
+            end
+
+            return false
+        end
+
+        local function v2242(applySellRarity)
             local v4305 = v1194(t9.SellUnderGen)
+
+            -- SellRarity is directly linked to SellUnderGen.
+            -- An item can sell only when BOTH its rarity is checked and its
+            -- earnings are below the configured $/s floor.
+            local selectedSellRarity = t9.SellRarity
+            if type(selectedSellRarity) ~= "table" then
+                selectedSellRarity = {}
+            end
+            local selectedSellRaritySet = {}
+            for _, rarityName in ipairs(selectedSellRarity) do
+                selectedSellRaritySet[string.lower(tostring(rarityName))] = true
+            end
+            local useSellRarity = next(selectedSellRaritySet) ~= nil
+
+            local function sellRarityMatches(cfg)
+                if not useSellRarity then
+                    return true
+                end
+                local rarity = cfg and cfg.Rarity
+                local rarityNumber = type(rarity) == "table" and tonumber(rarity.RarityNumber) or nil
+                local rarityName = rarityNumber and t6[rarityNumber] or nil
+                if rarityName and selectedSellRaritySet[string.lower(tostring(rarityName))] then
+                    return true
+                end
+                local directName = type(rarity) == "table" and (rarity.Name or rarity.DisplayName or rarity.name) or nil
+                return directName ~= nil and selectedSellRaritySet[string.lower(tostring(directName))] == true
+            end
             local t295 = {}
             local t296 = {}
-            if v4305 <= 0 then
+            if v4305 <= 0 or not useSellRarity then
                 local v4308 = t291
                 local v4309 = t291
                 local v4310 = t291
@@ -18493,7 +18729,7 @@ end;
                             local v4319 = (function() if not not Directory and v4318 then return Directory[v4318] else return nil end end)()
                             local v4320 = v1193(v, v4319)
 
-                            if v4320 < v4305 then
+                            if useSellRarity and sellRarityMatches(v4319) and v4305 > 0 and v4320 < v4305 then
                                 t295[#t295 + 1] = {
 									uid = str37,
 									cat = v4318,
@@ -18526,14 +18762,18 @@ end;
                             v4321 = v4311 and v4311.EggInventory
                         end
 
+                        local seenEggUids = {}
                         if type(v4321) == "table" then
                             for k, v in pairs(v4321) do
                                 if type(v) == "table" and v.Placement == nil then
                                     local v4326 = v.AssetCategory or v.Category
                                     local v4327 = (function() if not not Directory and v4326 then return Directory[v4326] else return nil end end)()
                                     local v4328 = v1193(v, v4327)
+                                    local sellRarityOK = useSellRarity and sellRarityMatches(v4327)
 
-                                    if v4328 < v4305 then
+                                    local eggUid = tostring(v.Uid or k)
+                                    seenEggUids[eggUid] = true
+                                    if sellRarityOK and v4305 > 0 and v4328 < v4305 then
                                         t296[#t296 + 1] = {
 											uid = tostring(v.Uid or k),
 											cat = v4326,
@@ -18546,6 +18786,49 @@ end;
                                 end
                             end
                         end
+
+                        -- Also read physical egg Tools from Backpack/Character.
+                        -- Some game builds expose the egg in the satchel before ReadOwnerEggs
+                        -- returns a matching EggInventory record. Use the same linked
+                        -- rarity + $/s selling rules as the main inventory records.
+                        local function collectBackpackEggTools(container)
+                            if not container then
+                                return
+                            end
+                            for _, tool in ipairs(container:GetChildren()) do
+                                if tool:IsA("Tool") and tool:GetAttribute("ItemType") == "AssetEgg" then
+                                    local uid = tool:GetAttribute("UID") or tool:GetAttribute("Uid")
+                                    uid = type(uid) == "string" and uid or nil
+                                    if uid and uid ~= "" and not seenEggUids[uid] then
+                                        local rarityNumber = tonumber(tool:GetAttribute("RarityNumber"))
+                                        local rarityName = tool:GetAttribute("Rarity") or tool:GetAttribute("RarityName") or tool:GetAttribute("DisplayRarity")
+                                        local cfg = nil
+                                        if rarityNumber or rarityName then
+                                            cfg = { Rarity = {} }
+                                            if rarityNumber then cfg.Rarity.RarityNumber = rarityNumber end
+                                            if rarityName then cfg.Rarity.Name = tostring(rarityName) end
+                                        end
+                                        if not cfg then
+                                            cfg = Directory and Directory[tool:GetAttribute("AssetCategory") or tool:GetAttribute("Category")] or nil
+                                        end
+                                        local earn = tonumber(tool:GetAttribute("Earnings")) or tonumber(tool:GetAttribute("Earn")) or 0
+                                        if useSellRarity and sellRarityMatches(cfg) and v4305 > 0 and earn < v4305 then
+                                            t296[#t296 + 1] = {
+                                                uid = uid,
+                                                cat = tool:GetAttribute("AssetCategory") or tool:GetAttribute("Category"),
+                                                cfg = cfg,
+                                                earn = earn,
+                                                rec = tool,
+                                                price = 0
+                                            }
+                                            seenEggUids[uid] = true
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                        collectBackpackEggTools(LocalPlayer:FindFirstChild("Backpack"))
+                        collectBackpackEggTools(LocalPlayer.Character)
 
                         local v4329 = t291
                         local v4330 = t291
@@ -18799,8 +19082,56 @@ end;
 
             return false
         end
-        local function v2246(p428)
-            v2220("PetSatchel", "SellPet", { p428 })
+        local function v2246(p428, p429)
+            -- Eggs: resolve the UID from Backpack/Character first when possible.
+            -- The inventory candidate UID is still used as the fallback.
+            local resolvedUid = type(p428) == "string" and p428 or tostring(p428 or "")
+            if p429 == "egg" then
+                local function findToolByUid(container)
+                    if not container then
+                        return nil
+                    end
+                    for _, child in ipairs(container:GetChildren()) do
+                        if child:IsA("Tool") then
+                            local uid = child:GetAttribute("UID") or child:GetAttribute("Uid")
+                            if type(uid) == "string" and uid ~= "" and uid == resolvedUid then
+                                return child
+                            end
+                        end
+                    end
+                    return nil
+                end
+
+                -- Backpack is the primary place to verify the actual tool UID.
+                -- Character is checked as well because an equipped egg is not in Backpack.
+                local backpackTool = findToolByUid(LocalPlayer:FindFirstChild("Backpack"))
+                local characterTool = findToolByUid(LocalPlayer.Character)
+                local actualTool = backpackTool or characterTool
+                if actualTool then
+                    local actualUid = actualTool:GetAttribute("UID") or actualTool:GetAttribute("Uid")
+                    if type(actualUid) == "string" and actualUid ~= "" then
+                        resolvedUid = actualUid
+                    end
+                end
+                local sellEggRemote
+                pcall(function()
+                    local Packages = ReplicatedStorage:FindFirstChild("Packages")
+                    local Networking = Packages and Packages:FindFirstChild("Networking")
+                    sellEggRemote = Networking and Networking:FindFirstChild("RE/PetSatchel/SellPet")
+                end)
+
+                if sellEggRemote and sellEggRemote:IsA("RemoteEvent") then
+                    pcall(function()
+                        sellEggRemote:FireServer({ resolvedUid })
+                    end)
+                else
+                    -- Fallback to the original remote resolver if the direct path
+                    -- is unavailable in a particular game build.
+                    v2220("PetSatchel", "SellPet", { resolvedUid })
+                end
+            else
+                v2220("PetSatchel", "SellPet", { p428 })
+            end
 
             local _, v4382, v4383 = v2243()
 
@@ -18819,7 +19150,7 @@ end;
             end
         end
         local function v2247()
-            local v4385, v4386 = v2242()
+            local v4385, v4386 = v2242(v2242a())
 
             if t9.AutoSellPets == true and #v4385 > 0 then
                 table.sort(v4385, function(p429, p430)
@@ -18920,7 +19251,7 @@ end;
 
             t291.lastSell = elapsed31
             t291.sellWhy = "selling"
-            v2246(v4398.uid)
+            v2246(v4398.uid, v4398.kind)
             t291.expectSold = {
 				uid = v4398.uid,
 				kind = v4398.kind,
@@ -19025,29 +19356,43 @@ end;
         end
         local function v2249c(targetCFrame)
             t291.treadmillRepositioning = true
+
             local Character = LocalPlayer.Character
             if not Character or typeof(targetCFrame) ~= "CFrame" then
+                t291.treadmillRepositioning = false
                 return false
             end
 
-            local Root = Character:FindFirstChild("HumanoidRootPart")
+            local Root = Character:FindFirstChild("HumanoidRootPart") or Character.PrimaryPart
             local Humanoid = Character:FindFirstChildOfClass("Humanoid")
             if not Root or not Humanoid or Humanoid.Health <= 0 then
+                t291.treadmillRepositioning = false
                 return false
             end
 
-            -- Keep the character noclipped for the whole reposition window.
-            -- A one-shot CanCollide=false is not enough because some games restore
-            -- character collision on Heartbeat/Stepped, which can leave us stuck
-            -- against invisible plot walls before the treadmill is reached.
+            if go_tween then
+                pcall(function()
+                    go_tween:Cancel()
+                end)
+                go_tween = nil
+            end
+
+            local oldWalkSpeed = Humanoid.WalkSpeed
+            local oldJumpPower = Humanoid.JumpPower
+            local oldJumpHeight = Humanoid.JumpHeight
+            local oldAutoRotate = Humanoid.AutoRotate
+            local oldPlatformStand = Humanoid.PlatformStand
             local savedCollision = {}
+
             local function setNoclip()
-                for _, descendant in ipairs(Character:GetDescendants()) do
-                    if descendant:IsA("BasePart") then
-                        if savedCollision[descendant] == nil then
-                            savedCollision[descendant] = descendant.CanCollide
+                for _, part in ipairs(Character:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        if savedCollision[part] == nil then
+                            savedCollision[part] = part.CanCollide
                         end
-                        descendant.CanCollide = false
+                        part.CanCollide = false
+                        part.AssemblyLinearVelocity = Vector3.zero
+                        part.AssemblyAngularVelocity = Vector3.zero
                     end
                 end
             end
@@ -19056,33 +19401,72 @@ end;
 
             pcall(function()
                 Humanoid.AutoRotate = false
-                Character:PivotTo(targetCFrame)
+                Humanoid.PlatformStand = true
+                Humanoid.WalkSpeed = 0
                 Root.AssemblyLinearVelocity = Vector3.zero
                 Root.AssemblyAngularVelocity = Vector3.zero
             end)
 
-            local started = os.clock()
-            task.spawn(function()
-                while Character.Parent and os.clock() - started < 0.65 do
-                    setNoclip()
-                    pcall(function()
-                        Root.AssemblyLinearVelocity = Vector3.zero
-                        Root.AssemblyAngularVelocity = Vector3.zero
-                    end)
-                    task.wait()
-                end
+            -- Direct CFrame reposition is intentional here. The old TweenService
+            -- path could appear to move locally while the character remained at
+            -- the original server position, causing the treadmill job to loop.
+            -- Repeat the write briefly so the root is actually placed on the belt.
+            local targetPosition = targetCFrame.Position
+            local targetRotation = targetCFrame - targetPosition
+            local finalCFrame = CFrame.new(targetPosition) * targetRotation
 
-                for part, canCollide in pairs(savedCollision) do
-                    if part and part.Parent then
-                        pcall(function()
-                            part.CanCollide = canCollide
-                        end)
-                    end
+            for _ = 1, 4 do
+                if not Root.Parent then
+                    break
                 end
+                setNoclip()
+                pcall(function()
+                    Root.CFrame = finalCFrame
+                    Root.AssemblyLinearVelocity = Vector3.zero
+                    Root.AssemblyAngularVelocity = Vector3.zero
+                end)
+                task.wait(0.035)
+            end
+
+            -- One last authoritative local write after the short stabilization.
+            pcall(function()
+                Root.CFrame = finalCFrame
+                Root.AssemblyLinearVelocity = Vector3.zero
+                Root.AssemblyAngularVelocity = Vector3.zero
+            end)
+
+            for part, canCollide in pairs(savedCollision) do
+                if part and part.Parent then
+                    part.CanCollide = canCollide
+                end
+            end
+
+            pcall(function()
+                Humanoid.WalkSpeed = oldWalkSpeed
+                Humanoid.JumpPower = oldJumpPower
+                Humanoid.JumpHeight = oldJumpHeight
+                Humanoid.AutoRotate = oldAutoRotate
+                Humanoid.PlatformStand = oldPlatformStand
             end)
 
             t291.treadmillRepositioning = false
-            return true
+
+            if Root.Parent then
+                local verified = (Root.Position - targetPosition).Magnitude <= 8
+                if not verified then
+                    -- A final retry is safer than immediately deciding that the
+                    -- treadmill is unavailable after a server correction.
+                    pcall(function()
+                        Root.CFrame = finalCFrame
+                        Root.AssemblyLinearVelocity = Vector3.zero
+                        Root.AssemblyAngularVelocity = Vector3.zero
+                    end)
+                    verified = (Root.Position - targetPosition).Magnitude <= 10
+                end
+                return verified
+            end
+
+            return false
         end
         local function v2250()
             if t9.AutoTreadmill ~= true then
@@ -19389,8 +19773,9 @@ end;
             local v4445 = #v4442
             local s29 = "off"
             if t9.AutoSellPets or t9.AutoSellEggs then
-                if v4443 <= 0 then
-                    s29 = "set a $/s floor"
+                local raritySellReady = type(t9.SellRarity) == "table" and #t9.SellRarity > 0
+                if v4443 <= 0 or not raritySellReady then
+                    s29 = "set both a $/s floor and rarity"
                     g4447 = true
                 end
 
@@ -19602,8 +19987,12 @@ end;
 
                 return
             end
-            if (t9.AutoSellPets or t9.AutoSellEggs) and v1194(t9.SellUnderGen) > 0 then
-                local v4478, v4479 = v2242()
+            local sellFloor = v1194(t9.SellUnderGen)
+            local raritySellReady = type(t9.SellRarity) == "table" and #t9.SellRarity > 0
+            local canSellPets = t9.AutoSellPets == true and sellFloor > 0 and raritySellReady
+            local canSellEggs = t9.AutoSellEggs == true and sellFloor > 0 and raritySellReady
+            if canSellPets or canSellEggs then
+                local v4478, v4479 = v2242(true)
 
                 if (t9.AutoSellPets and #v4478 or 0) + (t9.AutoSellEggs and #v4479 or 0) > 0 then
                     if v4468 and v2228(v4468) then
@@ -22362,7 +22751,7 @@ end;
                 if u1128 and typeof(u1127) == "Vector3" then
                     local v4575 = tonumber(t9.StealSpeed) or 16
 
-                    v2505.WalkSpeed = math.clamp(v4575, 16, 1300)
+                    v2505.WalkSpeed = math.clamp(v4575, 16, 500)
                 else
                     v2505.WalkSpeed = n9
                 end
@@ -22688,7 +23077,8 @@ end;
 
                 local pos = target.pos
                 local _ = v2504.Position
-                local v2541 = (function() if typeof(pos) == "Vector3" then return (function() if not u1130() then return Vector3.new(pos.X, pos.Y - 2.5, pos.Z) else return Vector3.new(pos.X, pos.Y + 1.5, pos.Z) end end)() else return pos end end)()
+
+local v2541 = (function() if typeof(pos) == "Vector3" then return (function() if not u1130() then return Vector3.new(pos.X, pos.Y - 2.5, pos.Z) else return Vector3.new(pos.X, pos.Y + 1.5, pos.Z) end end)() else return pos end end)()
 
                 u1127 = v1225(v2541, v2504.Position, true)
                 u1128 = true
@@ -23198,6 +23588,7 @@ end;
             return
         end
     end
+    local instantTPEggNow
     local function v1237()
         t216.running = false
         u1128 = false
@@ -23330,6 +23721,13 @@ end;
             t216.lastPos = nil
             t216.pendingCarry = nil
 
+            if t9.AutoHumanoid then
+                t9.HumReady = false
+                if t9.AutoSteal == true then
+                    pcall(createSrc2Humanoid)
+                end
+            end
+
             if t216.state ~= "Scan" then
                 v1102("steal", t216.state, "->", "Scan", "start", t216.target and t216.target.name or "")
                 t216.state = "Scan"
@@ -23431,7 +23829,17 @@ end;
             v1150(false)
         end
     end)
-    v1238("BypassTP", function(p486tp)
+    -- Instant egg TP controller. It is intentionally driven by the Auto Steal
+    -- state machine instead of the toggle callback, because the target is usually
+    -- nil when the toggle is first enabled. Once Scan selects an egg, GoEgg calls
+    -- this helper and it keeps retrying until the server reports the egg as carried.
+    -- Instant egg route: Base -> EggPoint -> Base.
+    -- Uses the same bypass reposition helper as the original movement system,
+    -- preserves the current yaw, stops animations/velocity during the snap,
+    -- and only reports success after the normal grab path confirms the carry.
+
+
+v1238("BypassTP", function(p486tp)
         if p486tp ~= true or t9.AutoTreadmill ~= true then
             return
         end
@@ -23649,44 +24057,7 @@ end;
             u1230.now()
         end
     end)
-    v1238("SellPreview", function()
-        if t11.open then
-            t11.open()
-        end
-    end)
-    function t11.open()
-        t9.StatsPanel = true
 
-        if t10.StatsPanel and t10.StatsPanel.set then
-            pcall(t10.StatsPanel.set, true)
-        end
-
-        if u1134 and u1134.stats then
-            pcall(u1134.stats, true)
-        end
-
-        if u1135 and u1135.queuePreview then
-            local ok90, result86 = pcall(u1135.queuePreview)
-
-            if not ok90 then
-                local SellPreview = t10.SellPreview
-
-                if SellPreview and SellPreview.status then
-                    SellPreview.status.Text = "failed · " .. tostring(result86)
-                end
-
-                v1102("plot", "preview ERR", (tostring(result86)))
-            end
-
-            return
-        end
-
-        local SellPreview = t10.SellPreview
-
-        if SellPreview and SellPreview.status then
-            SellPreview.status.Text = "preview missing"
-        end
-    end
     v1238("HookTest", function()
         local HookTest = t10.HookTest
 
@@ -24269,6 +24640,16 @@ end;
 
     -- Cascade-native appearance state. These values are also persisted by the
     -- source config because they live in t9.
+-- Axel Hub startup appearance: Dark by default.
+    -- Cascade officially supports setting the app-wide theme through the
+    -- Theme property / New() properties.
+    t9.Theme = tostring(t9.Theme or "Dark")
+    t9.KiraAccent = tostring(t9.KiraAccent or "Orange")
+
+    local __uiState = {}
+
+    -- Cascade appearance: Theme + Accent Color.
+    -- Orange is the default accent and the fallback for invalid values.
     local cascadeAccentNames = {
         Blue = cascade.Accents.Blue,
         Red = cascade.Accents.Red,
@@ -24280,31 +24661,37 @@ end;
         Purple = cascade.Accents.Purple,
     }
 
-    -- Axel Hub startup appearance: Dark by default.
-    -- Cascade officially supports setting the app-wide theme through the
-    -- Theme property / New() properties.
-    t9.Theme = "Dark"
-
-    local __uiState = {}
-    __uiState.savedAccent = tostring(t9.KiraAccent or "Orange")
-    if not cascadeAccentNames[__uiState.savedAccent] then
-        __uiState.savedAccent = "Orange"
+    if not cascadeAccentNames[t9.KiraAccent] then
+        t9.KiraAccent = "Orange"
     end
-    t9.KiraAccent = __uiState.savedAccent
 
     __uiState.app = cascade.New({
         Theme = cascade.Themes.Dark,
-        Accent = cascadeAccentNames[__uiState.savedAccent],
+        Accent = cascadeAccentNames[t9.KiraAccent],
         WindowPill = true,
     })
 
     local function applyCascadeAppearance()
         local themeName = tostring(t9.Theme or "Dark")
-        __uiState.app.Theme = themeName == "Light" and cascade.Themes.Light or cascade.Themes.Dark
-
         local accentName = tostring(t9.KiraAccent or "Orange")
-        __uiState.app.Accent = cascadeAccentNames[accentName] or cascade.Accents.Orange
-        t9.KiraAccent = cascadeAccentNames[accentName] and accentName or "Orange"
+
+        if not cascadeAccentNames[accentName] then
+            accentName = "Orange"
+            t9.KiraAccent = accentName
+        end
+
+        local theme = themeName == "Light"
+            and cascade.Themes.Light
+            or cascade.Themes.Dark
+        local accent = cascadeAccentNames[accentName]
+
+        -- Cascade documents Theme/Accent as app-wide writable properties.
+        pcall(function()
+            __uiState.app.Theme = theme
+        end)
+        pcall(function()
+            __uiState.app.Accent = accent
+        end)
     end
 
     -- Set Dark immediately and once after construction.
@@ -24383,10 +24770,16 @@ end;
             t9.Theme = value == "Light" and "Light" or "Dark"
             pcall(applyCascadeAppearance)
         elseif flag == "KiraAccent" then
-            t9.KiraAccent = tostring(value)
+            t9.KiraAccent = tostring(value or "Orange")
             pcall(applyCascadeAppearance)
         elseif flag == "CfgPreset" and fire then
             pcall(applyCascadeAppearance)
+        end
+
+        if fire and flag ~= "CfgPreset" then
+            task.defer(function()
+                pcall(v272, true)
+            end)
         end
     end
 
@@ -24394,6 +24787,493 @@ end;
         local widget = t149.Widgets and t149.Widgets[flag]
         if widget and widget.on then
             return pcall(widget.on, ...)
+        end
+    end
+
+    ----------------------------------------------------------------
+    -- AUTO BOSS RIFT BACKEND
+    ----------------------------------------------------------------
+    do
+        local BossTweenService = game:GetService("TweenService")
+        local bossRiftToken = 0
+
+        local function bossRiftAlive(token)
+            return token == bossRiftToken and t9.BossRift == true
+        end
+
+        local function bossRiftRoot()
+            local character = LocalPlayer and LocalPlayer.Character
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+            if not root or not humanoid or humanoid.Health <= 0 then
+                return nil, nil
+            end
+            return root, humanoid
+        end
+
+        local function bossRiftNumber(value)
+            if type(value) == "number" then
+                return value
+            end
+            return tonumber(value)
+        end
+
+        local function bossRiftHealth(obj)
+            if not obj then
+                return nil
+            end
+
+            local ok, direct = pcall(function()
+                return obj.Health
+            end)
+            if ok then
+                local n = bossRiftNumber(direct)
+                if n ~= nil then
+                    return n
+                end
+            end
+
+            for _, attr in ipairs({"Health", "CurrentHealth", "HP", "Value"}) do
+                local okAttr, value = pcall(function()
+                    return obj:GetAttribute(attr)
+                end)
+                if okAttr then
+                    local n = bossRiftNumber(value)
+                    if n ~= nil then
+                        return n
+                    end
+                end
+            end
+
+            for _, name in ipairs({"Health", "CurrentHealth", "HP", "Value"}) do
+                local child = obj:FindFirstChild(name)
+                if child then
+                    local okValue, value = pcall(function()
+                        return child.Value
+                    end)
+                    if okValue then
+                        local n = bossRiftNumber(value)
+                        if n ~= nil then
+                            return n
+                        end
+                    end
+                end
+            end
+
+            if obj:IsA("GuiObject") then
+                return math.max(tonumber(obj.Size.X.Scale) or 0, 0)
+            end
+
+            local textObj = obj:FindFirstChildWhichIsA("TextLabel", true)
+                or obj:FindFirstChildWhichIsA("TextButton", true)
+            if textObj and type(textObj.Text) == "string" then
+                local a, b = textObj.Text:match("([%d%.]+)%s*/%s*([%d%.]+)")
+                if a and b then
+                    return tonumber(a)
+                end
+                local single = textObj.Text:match("([%d%.]+)")
+                if single then
+                    return tonumber(single)
+                end
+            end
+
+            return nil
+        end
+
+        local function bossRiftTargetCFrame(target)
+            if not target or not target.Parent then
+                return nil
+            end
+            if target:IsA("BasePart") then
+                return target.CFrame
+            end
+            if target:IsA("Model") then
+                local ok, pivot = pcall(function()
+                    return target:GetPivot()
+                end)
+                if ok then
+                    return pivot
+                end
+            end
+            local part = target:FindFirstChildWhichIsA("BasePart", true)
+            return part and part.CFrame or nil
+        end
+
+        local function bossRiftTweenTo(target, token, speedOverride)
+            local root, humanoid = bossRiftRoot()
+            local targetCF = bossRiftTargetCFrame(target)
+            if not root or not humanoid or not targetCF or not bossRiftAlive(token) then
+                return false, "invalid"
+            end
+
+            local distance = (root.Position - targetCF.Position).Magnitude
+            if distance <= 2.5 then
+                pcall(function() root.CFrame = targetCF end)
+                return true, "done"
+            end
+
+            -- While BossArenaTeleport exists, use the dedicated Boss Rift speed.
+            -- Once the trigger disappears / cannot be found, fall back to Auto Steal speed.
+            local speedSource
+            if speedOverride ~= nil then
+                speedSource = speedOverride
+            elseif workspace:FindFirstChild("BossArenaTeleport") then
+                speedSource = t9.BossRiftSpeed
+            else
+                speedSource = t9.StealSpeed
+            end
+            local speed = math.clamp(tonumber(speedSource) or 300, 1, 1000)
+            local duration = math.max(distance / speed, 0.05)
+            local tween
+
+            local ok = pcall(function()
+                humanoid.PlatformStand = false
+                humanoid.AutoRotate = false
+                root.AssemblyLinearVelocity = Vector3.zero
+                root.AssemblyAngularVelocity = Vector3.zero
+                tween = BossTweenService:Create(
+                    root,
+                    TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
+                    {CFrame = targetCF}
+                )
+                tween:Play()
+            end)
+            if not ok or not tween then
+                return false, "error"
+            end
+
+            local completed = false
+            local connection = tween.Completed:Connect(function()
+                completed = true
+            end)
+
+            while bossRiftAlive(token) and not completed do
+                local liveRoot, liveHumanoid = bossRiftRoot()
+                if liveRoot ~= root or liveHumanoid ~= humanoid or not root.Parent or humanoid.Health <= 0 then
+                    pcall(function() tween:Cancel() end)
+                    pcall(function() connection:Disconnect() end)
+                    return false, "dead"
+                end
+                RunService.Heartbeat:Wait()
+            end
+
+            pcall(function() connection:Disconnect() end)
+            pcall(function() tween:Cancel() end)
+            if not bossRiftAlive(token) then
+                return false, "off"
+            end
+            return completed, completed and "done" or "stopped"
+        end
+
+        -- StarterGear's first Tool is the Bat slot. After respawn, equip the
+        -- matching tool copied into Backpack/Character from StarterGear.
+        local function bossRiftStarterBatName()
+            local starterGear = LocalPlayer and LocalPlayer:FindFirstChild("StarterGear")
+            if not starterGear then
+                return nil
+            end
+            local firstTool = nil
+            for _, obj in ipairs(starterGear:GetChildren()) do
+                if obj:IsA("Tool") then
+                    firstTool = obj
+                    break
+                end
+            end
+            return firstTool and firstTool.Name or "Bat"
+        end
+
+        local function bossRiftEquipBat()
+            local character = LocalPlayer and LocalPlayer.Character
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            if not humanoid or humanoid.Health <= 0 then
+                return nil
+            end
+
+            local desiredName = bossRiftStarterBatName() or "Bat"
+            local function find(container)
+                if not container then return nil end
+                for _, obj in ipairs(container:GetChildren()) do
+                    if obj:IsA("Tool") and obj.Name == desiredName then
+                        return obj
+                    end
+                end
+                -- Fallback only if first slot name changed after respawn.
+                for _, obj in ipairs(container:GetChildren()) do
+                    if obj:IsA("Tool") and string.lower(obj.Name):find("bat", 1, true) then
+                        return obj
+                    end
+                end
+                return nil
+            end
+
+            local equipped = find(character)
+            if equipped then
+                return equipped
+            end
+
+            local backpack = LocalPlayer:FindFirstChild("Backpack")
+            local bat = find(backpack)
+            if bat then
+                pcall(function() humanoid:EquipTool(bat) end)
+                task.wait(0.08)
+                return find(character) or bat
+            end
+            return nil
+        end
+
+        local function bossRiftSwing(bat)
+            if bat and bat.Parent then
+                pcall(function() bat:Activate() end)
+            end
+        end
+
+        local function bossRiftTeleportNode()
+            return workspace:FindFirstChild("BossArenaTeleport")
+        end
+
+        local function bossRiftBossBar()
+            local playerGui = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+            local ui = playerGui and playerGui:FindFirstChild("BossFightUI")
+            return ui and ui:FindFirstChild("BossHPBar", true)
+        end
+
+        -- Best-effort priority detector. The normal Auto Steal loop remains the
+        -- collector; Boss Rift simply refuses to enter while a Secret/Divine egg
+        -- is visibly present, so the ordinary steal system gets first priority.
+        local function bossRiftPriorityEggPresent()
+            for _, obj in ipairs(workspace:GetDescendants()) do
+                local lowerName = string.lower(obj.Name or "")
+                if lowerName:find("egg", 1, true) then
+                    local rarity = nil
+                    for _, attr in ipairs({"Rarity", "RarityName", "DisplayRarity"}) do
+                        local ok, value = pcall(function() return obj:GetAttribute(attr) end)
+                        if ok and value ~= nil then
+                            rarity = string.lower(tostring(value))
+                            break
+                        end
+                    end
+                    if rarity == "secret" or rarity == "divine" or rarity == "etheral" or rarity == "ethereal" then
+                        return true
+                    end
+
+                    local textObj = obj:FindFirstChildWhichIsA("TextLabel", true)
+                        or obj:FindFirstChildWhichIsA("TextButton", true)
+                    if textObj and type(textObj.Text) == "string" then
+                        local txt = string.lower(textObj.Text)
+                        if txt:find("secret", 1, true) or txt:find("divine", 1, true) or txt:find("etheral", 1, true) or txt:find("ethereal", 1, true) then
+                            return true
+                        end
+                    end
+                end
+            end
+            return false
+        end
+
+        local function bossRiftWaitForCharacter(token)
+            while bossRiftAlive(token) do
+                local root, humanoid = bossRiftRoot()
+                if root and humanoid then
+                    return root, humanoid
+                end
+                task.wait(0.15)
+            end
+            return nil, nil
+        end
+
+        local function bossRiftRun(token)
+            -- stage: 0 = waiting for first entry, 1-4 = current crystal,
+            --         5 = boss. This value survives a player death.
+            local stage = 0
+            local enteredRift = false
+
+            while bossRiftAlive(token) do
+                if not enteredRift then
+                    -- IMPORTANT: this is checked continuously. No arena trigger,
+                    -- no Boss Rift work at all.
+                    local teleport = bossRiftTeleportNode()
+                    if not teleport then
+                        task.wait(0.35)
+                        continue
+                    end
+
+                    -- Secret/Divine gets first priority before the 10s start delay.
+                    if bossRiftPriorityEggPresent() then
+                        task.wait(0.35)
+                        continue
+                    end
+
+                    -- No 10 second wait: once no Secret/Divine priority egg is
+                    -- present, enter the portal immediately.
+                    local _, hum = bossRiftWaitForCharacter(token)
+                    if not hum then return end
+                    bossRiftEquipBat()
+
+                    -- Entry to BossArenaTeleport deliberately uses Auto Steal's
+                    -- travel speed. BossRiftSpeed is only used after entering the Rift.
+                    local ok, reason = bossRiftTweenTo(
+                        bossRiftTeleportNode(),
+                        token,
+                        math.clamp(tonumber(t9.StealSpeed) or 300, 1, 1000)
+                    )
+                    if not ok then
+                        if reason == "dead" then
+                            task.wait(0.5)
+                        else
+                            task.wait(0.25)
+                        end
+                        continue
+                    end
+
+                    enteredRift = true
+                    stage = 1
+                end
+
+                local root, humanoid = bossRiftWaitForCharacter(token)
+                if not root or not humanoid then
+                    return
+                end
+                local bat = bossRiftEquipBat()
+
+                local arena = workspace:FindFirstChild("BossArena")
+                local towers = arena and arena:FindFirstChild("CrystalTowers")
+
+                if stage <= 4 then
+                    local resumedAfterDeath = false
+                    for i = stage, 4 do
+                        if not bossRiftAlive(token) then return end
+                        stage = i
+
+                        arena = workspace:FindFirstChild("BossArena")
+                        towers = arena and arena:FindFirstChild("CrystalTowers")
+                        local tower = towers and towers:FindFirstChild(tostring(i))
+                        local hitbox = tower and tower:FindFirstChild("Hitbox")
+
+                        if tower and hitbox then
+                            local hp = bossRiftHealth(hitbox)
+                            if hp == nil or hp > 0 then
+                                local _, moveReason = bossRiftTweenTo(hitbox, token)
+                                if moveReason == "dead" then
+                                    resumedAfterDeath = true
+                                    break
+                                end
+                                bat = bossRiftEquipBat() or bat
+
+                                while bossRiftAlive(token) and tower.Parent and hitbox.Parent do
+                                    local liveRoot, liveHumanoid = bossRiftRoot()
+                                    if not liveRoot or not liveHumanoid then
+                                        resumedAfterDeath = true
+                                        break
+                                    end
+
+                                    bat = bossRiftEquipBat() or bat
+                                    local currentHp = bossRiftHealth(hitbox)
+                                    if currentHp ~= nil and currentHp <= 0 then
+                                        break
+                                    end
+
+                                    bossRiftSwing(bat)
+                                    task.wait(0.11)
+                                end
+
+                                if resumedAfterDeath then
+                                    break
+                                end
+                            end
+                        end
+                    end
+
+                    if resumedAfterDeath then
+                        -- DO NOT Tween back to BossArenaTeleport. On respawn, keep
+                        -- the saved crystal number and continue from that point.
+                        task.wait(0.5)
+                        continue
+                    end
+
+                    -- Verify all four crystals are actually empty before boss phase.
+                    local anyCrystalAlive = false
+                    local checkArena = workspace:FindFirstChild("BossArena")
+                    towers = checkArena and checkArena:FindFirstChild("CrystalTowers")
+                    if towers then
+                        for i = 1, 4 do
+                            local tower = towers:FindFirstChild(tostring(i))
+                            local hitbox = tower and tower:FindFirstChild("Hitbox")
+                            local hp = bossRiftHealth(hitbox)
+                            if hp == nil and tower then
+                                anyCrystalAlive = true
+                                break
+                            elseif hp and hp > 0 then
+                                anyCrystalAlive = true
+                                break
+                            end
+                        end
+                    end
+
+                    if anyCrystalAlive then
+                        stage = 1
+                        task.wait(0.2)
+                        continue
+                    end
+
+                    stage = 5
+                end
+
+                -- Boss phase. Death resumes directly at SlamRestHitbox;
+                -- BossArenaTeleport is NEVER used as a respawn destination.
+                while bossRiftAlive(token) and stage == 5 do
+                    arena = workspace:FindFirstChild("BossArena")
+                    local bossPoint = arena and arena:FindFirstChild("SlamRestHitbox")
+                    if not bossPoint then
+                        task.wait(0.3)
+                        continue
+                    end
+
+                    local ok, reason = bossRiftTweenTo(bossPoint, token)
+                    if not ok then
+                        if reason == "dead" then
+                            task.wait(0.5)
+                            continue
+                        end
+                        task.wait(0.25)
+                        continue
+                    end
+
+                    bat = bossRiftEquipBat() or bat
+                    while bossRiftAlive(token) do
+                        local liveRoot, liveHumanoid = bossRiftRoot()
+                        if not liveRoot or not liveHumanoid then
+                            -- Respawn: stay in stage 5 and go straight back to boss point.
+                            task.wait(0.5)
+                            break
+                        end
+
+                        bat = bossRiftEquipBat() or bat
+                        local bossBar = bossRiftBossBar()
+                        local bossHp = bossRiftHealth(bossBar)
+                        if bossHp ~= nil and bossHp <= 0 then
+                            -- Boss completed. Reset to waiting mode for the NEXT
+                            -- BossArenaTeleport, rather than re-running immediately.
+                            enteredRift = false
+                            stage = 0
+                            break
+                        end
+
+                        bossRiftSwing(bat)
+                        task.wait(0.11)
+                    end
+                end
+
+                task.wait(0.25)
+            end
+        end
+
+        t216.bossRiftToggle = function(enabled)
+            bossRiftToken = bossRiftToken + 1
+            local token = bossRiftToken
+            if enabled then
+                task.spawn(function()
+                    pcall(bossRiftRun, token)
+                end)
+            end
         end
     end
 
@@ -24581,8 +25461,13 @@ end;
     __uiState.steal = section(__uiState.eggs, "Auto Steal", "Original source engine — targeting, filters, travel and carry recovery.")
     addInfo(__uiState.steal, "SCRIPT IS FREE")
     addToggle(__uiState.steal, "AutoSteal", "Auto Steal", "Starts/stops the original steal state machine.", false)
-    addPopup(__uiState.steal, "StealTravel", "Travel Mode", "Original travel mode.", {"Speed", "Flight"}, current("StealTravel", "Speed"))
-    addSlider(__uiState.steal, "StealSpeed", "Travel Speed", "Studs/s — source engine speed.", 50, 1300, 300)
+    local travelModeValue = current("StealTravel", "Speed")
+    if travelModeValue ~= "Speed" and travelModeValue ~= "Flight" then
+        travelModeValue = "Speed"
+        t9.StealTravel = "Speed"
+    end
+    addPopup(__uiState.steal, "StealTravel", "Farm Method", "Choose how the hub travels between targets.", {"Speed", "Flight"}, travelModeValue)
+    addSlider(__uiState.steal, "StealSpeed", "Travel Speed", "Studs/s for normal ground movement.", 0, 500, 300)
 
     __uiState.targeting = section(__uiState.eggs, "Targeting / Filters", "Exact source filters used by the egg selector.")
     addPopup(__uiState.targeting, "StealMode", "What To Take", "Best value, egg type filter, or Gen snipe.", {
@@ -24605,6 +25490,18 @@ end;
     __uiState.event = section(__uiState.eggs, "Hungry Monster / Auto Event", "Original infested-egg event handling.")
     addToggle(__uiState.event, "AutoEvent", "Auto Hungry Monster", "After filters: grab infested, equip, feed.", false)
     addText(__uiState.event, "EventKeepGen", "Don't Feed Above ($/s)", "Keeps high-pay eggs; blank feeds any.", "feed any · e.g. 5m")
+
+    ----------------------------------------------------------------
+    -- AUTO BOSS RIFT
+    ----------------------------------------------------------------
+    __uiState.bossRift = section(__uiState.eggs, "Auto Boss Rift", "Detect BossArenaTeleport, clear Crystal Towers 1-4, then attack the boss.")
+    addToggle(__uiState.bossRift, "BossRift", "Auto Boss Rift", "Waits for BossArenaTeleport, then clears 1→4 and the boss. Respawns resume the saved step.", false)
+    addSlider(__uiState.bossRift, "BossRiftSpeed", "Boss Rift Speed", "Studs/s for Boss Rift after entering the Rift.", 1, 1000, current("BossRiftSpeed", 750))
+    v1238("BossRift", function(enabled)
+        if t216.bossRiftToggle then
+            t216.bossRiftToggle(enabled == true)
+        end
+    end)
 
     ----------------------------------------------------------------
     -- PROGRESSION
@@ -24631,7 +25528,15 @@ end;
     addText(__uiState.upgrades, "KeepMoney", "Keep This Much Money", "Never spend below this amount.", "spend it all · e.g. 500m")
 
     __uiState.selling = section(__uiState.progression, "Selling", "Original selling system.")
-    addButton(__uiState.selling, "SellPreview", "Preview What Will Sell", "Opens the source preview window.", "Preview")
+    __uiState.sellRarity = {}
+    for _, rarity in ipairs(t6 or {}) do
+        __uiState.sellRarity[#__uiState.sellRarity + 1] = rarity
+    end
+    local sellRarityValue = current("SellRarity", {})
+    if type(sellRarityValue) == "string" then
+        sellRarityValue = sellRarityValue ~= "" and sellRarityValue ~= "Any" and { sellRarityValue } or {}
+    end
+    addMultiPopup(__uiState.selling, "SellRarity", "Rarity For Sell", "Only checked rarities can sell, and they must also be below the $/s input.", __uiState.sellRarity, sellRarityValue or {})
     addText(__uiState.selling, "SellUnderGen", "Sell Under ($/s)", "Blank = nothing sells.", "nothing sells · e.g. 250k")
     addToggle(__uiState.selling, "AutoSellPets", "Auto Sell Pets", "Worst first; only below the source floor.", false)
     addToggle(__uiState.selling, "AutoSellEggs", "Auto Sell Eggs", "Spare eggs only; plot eggs stay.", false)
@@ -24737,7 +25642,6 @@ end;
     }, current("HookPing", "No ping"))
     addText(__uiState.hookFilter, "HookUserId", "User ID", "Optional.", "0")
     addToggle(__uiState.hookFilter, "HookUsername", "Show Roblox Name", "Include Roblox name and headshot.", false)
-    addToggle(__uiState.hookFilter, "ExportUrl", "Carry URL In Exported Config", "Off by default.", false)
 
     ----------------------------------------------------------------
     -- SETTINGS
@@ -24758,7 +25662,7 @@ end;
             })
             titleStack(row, "Dark mode", "Uses Cascade's application-wide Light/Dark theme.")
             row:Right():Toggle({
-                Value = true,
+                Value = tostring(t9.Theme or "Dark") == "Dark",
                 ValueChanged = function(_, value)
                     t9.Theme = value and "Dark" or "Light"
                     applyCascadeAppearance()
@@ -24767,18 +25671,23 @@ end;
             })
         end
 
-        do -- Accent
-            local accentOptions = {
-                "Blue", "Red", "Orange", "Yellow",
-                "Green", "Graphite", "Pink", "Purple",
-            }
-            addPopup(form, "KiraAccent", "Accent color", "Cascade accent used by buttons, selections and highlights.", accentOptions, __uiState.savedAccent)
+        do -- Accent color
+            addPopup(
+                form,
+                "KiraAccent",
+                "Accent color",
+                "Controls Cascade's application-wide accent color.",
+                {"Orange", "Blue", "Red", "Yellow", "Green", "Graphite", "Pink", "Purple"},
+                tostring(t9.KiraAccent or "Orange")
+            )
         end
 
         do -- UI scale
             addSlider(form, "UIScale", "UI scale", "Source scale is kept for config compatibility.", 75, 125, 100)
         end
     end
+
+    pcall(applyCascadeAppearance)
 
     do -- Input
         local form = __uiState.settings:PageSection({
@@ -24860,15 +25769,15 @@ end;
     do -- Config
         local form = __uiState.settings:PageSection({
             Title = "Config",
-            Subtitle = "Save, load, export and import the original settings plus Cascade accent.",
+            Subtitle = "Save, load, export and import the supported hub settings.",
         }):Form()
 
         addPopup(form, "CfgPreset", "Load Config", "Choose a saved configuration.", {"default"}, current("CfgPreset", "default"))
         addText(form, "CfgSaveName", "Save As", "Blank = default.", "name · or leave blank")
-        addButton(form, "SaveCfgAs", "Save Config", "Writes the original config plus Cascade accent.", "Save")
-        addButton(form, "ExportCfg", "Export Settings", "Copies the JSON config to clipboard.", "Copy")
-        addText(form, "ImportPaste", "Import Settings", "Paste exported JSON here.", "paste, then press Import")
-        addButton(form, "ImportCfg", "Import", "Applies the pasted config.", "Import")
+        addButton(form, "SaveCfgAs", "Save Config", "Saves the current settings immediately to a JSON config file.", "Save")
+        addButton(form, "ExportCfg", "Export JS", "Exports the current settings as JavaScript and saves a .js file.", "Export")
+        addText(form, "ImportPaste", "Import Settings", "Paste JSON or exported JavaScript config.", "paste JSON or JS here")
+        addButton(form, "ImportCfg", "Import", "Imports JSON or exported JavaScript config.", "Import")
     end
 
     do -- Window
